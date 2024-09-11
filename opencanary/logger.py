@@ -244,93 +244,43 @@ class HpfeedsHandler(logging.Handler):
             print("Error on publishing to server")
 
 class NotifiarrHandler(logging.Handler):
-    LOG_TYPE_MAP = {
-        1000: "Boot",
-        1001: "Message",
-        1002: "Debug",
-        1003: "Error",
-        1004: "Ping",
-        1005: "Config Save",
-        1006: "Example",
-        2000: "FTP Login Attempt",
-        3000: "HTTP GET",
-        3001: "HTTP POST Login Attempt",
-        4000: "SSH New Connection",
-        4001: "SSH Remote Version Sent",
-        4002: "SSH Login Attempt",
-        5000: "SMB File Open",
-        5001: "Port SYN",
-        5002: "Port NMAP OS",
-        5003: "Port NMAP NULL",
-        5004: "Port NMAP XMAS",
-        5005: "Port NMAP FIN",
-        6001: "Telnet Login Attempt",
-        7001: "HTTP Proxy Login Attempt",
-        8001: "MySQL Login Attempt",
-        9001: "MSSQL Login SQL Auth",
-        9002: "MSSQL Login Windows Auth",
-        10001: "TFTP",
-        11001: "NTP Monlist",
-        12001: "VNC",
-        13001: "SNMP Command",
-        14001: "RDP",
-        15001: "SIP Request",
-        16001: "Git Clone Request",
-        17001: "Redis Command",
-        18001: "TCP Banner Connection Made",
-        18002: "TCP Banner Keep Alive Connection Made",
-        18003: "TCP Banner Keep Alive Secret Received",
-        18004: "TCP Banner Keep Alive Data Received",
-        18005: "TCP Banner Data Received",
-        19001: "LLMNR Query Response",
-        99000: "User 0",
-        99001: "User 1",
-        99002: "User 2",
-        99003: "User 3",
-        99004: "User 4",
-        99005: "User 5",
-        99006: "User 6",
-        99007: "User 7",
-        99008: "User 8",
-        99009: "User 9"
-    }
 
-    def __init__(self, webhook_url, time_options):
-        logging.Handler.__init__(self)
+    def __init__(self, webhook_url, time_options=None):
+        super().__init__()
         self.webhook_url = webhook_url
-        self.time_options = time_options  # Set the time options array (local_time, local_time_adjusted, utc_time)
+        self.LOG_TYPE_MAP = self.generate_log_type_map()
+        self.time_options = time_options if time_options else []  # Allow optional time field selection
+        print(f"notifiarrHander LOG_TYPE_MAP: {self.LOG_TYPE_MAP}")  # Temp mapping debug output
+
+    def generate_log_type_map(self):
+        log_type_map = {}
+        for name, value in inspect.getmembers(LoggerBase, lambda x: isinstance(x, int)):
+            if name.startswith("LOG_"):
+                human_name = name[len("LOG_"):].replace("_", " ").title()
+                log_type_map[value] = human_name
+        return log_type_map
 
     def generate_msg(self, alert):
         data = json.loads(alert.msg)
 
-        # Prepare the fields for the Notifiarr payload
+        # Drop unused fields
         fields = []
         for k, v in data.items():
-            # Skip null, "Missing Value", -1, or empty string fields
             if v is None or v == "Missing Value" or v == -1 or v == "":
                 continue
-
-            # Skip the original logtype field as it will be replaced
             if k == "logtype" or k == "log_type":
                 continue
 
-            # Add only the selected time fields
+            # Add selected time zones as per opencanary.conf
             if k in ["local_time", "local_time_adjusted", "utc_time"] and k not in self.time_options:
-                continue  # Skip this time field if it's not in the selected options
+                continue
 
-            # Determine markdown wrapping
+            # Determine markdown wrapping for included fields
             if k == "logdata":
-                # Use triple backticks for logdata field
                 text = f"```\n{json.dumps(v) if isinstance(v, dict) else str(v)}\n```"
             else:
-                # Use single backticks for other fields
                 text = f"`{json.dumps(v) if isinstance(v, dict) else str(v)}`"
-
-            fields.append({
-                "title": k,
-                "text": text,
-                "inline": False
-            })
+            fields.append({"title": k, "text": text, "inline": False})
 
         # Include log type as the "logtype" field with human-readable name
         log_type_number = data.get("logtype", data.get("log_type", None))
@@ -338,8 +288,8 @@ class NotifiarrHandler(logging.Handler):
 
         if log_type_number is not None:
             fields.append({
-                "title": "logtype",  # Keep the original label as "logtype"
-                "text": f"`{log_type_number}: {log_type_name}`",  # Show number and readable name
+                "title": "logtype",
+                "text": f"`{log_type_number}: {log_type_name}`",
                 "inline": False
             })
 
@@ -348,37 +298,31 @@ class NotifiarrHandler(logging.Handler):
             "notification": {
                 "update": False,
                 "name": "OpenCanary",
-                "event": f"{log_type_number}: {log_type_name}"  # Event field no longer wrapped in backticks
+                "event": f"{log_type_number}: {log_type_name}"
             },
             "discord": {
-                "color": "FF0000",  # Optional: Customize as needed
-                "ping": {
-                    "pingUser": '''redacted'''  # Optional: Add user ID if needed
-                },
-                "images": {
-                    "thumbnail": "",  # Optional: Add thumbnail URL if needed
-                    "image": ""  # Optional: Add image URL if needed
-                },
+                "color": "FF0000",
+                "ping": {"pingUser": '''redacted'''},
+                "images": {"thumbnail": "", "image": ""},
                 "text": {
-                    "title": "Incident Detail",  # Title of the notification
-                    "content": "Honeypot Alert",  # Content to display above the embed
-                    "fields": fields  # Fields created from the alert data
+                    "title": "Incident Detail",
+                    "content": "Honeypot Alert",
+                    "fields": fields  # Fields parsed and treated from the alert data
                 },
-                "ids": {
-                    "channel": '''redacted'''  # Required: Channel ID to send the notification
-                }
+                "ids": {"channel": '''redacted'''}
             }
         }
         
         return msg
 
     def emit(self, record):
-        data = self.generate_msg(record)
-        response = requests.post(self.webhook_url, json=data)
-        if response.status_code != 200:
-            print(
-                f"Error {response.status_code} sending Notifiarr message, the response was:\n{response.text}"
-            )
+        try:
+            data = self.generate_msg(record)
+            response = requests.post(self.webhook_url, json=data)
+            if response.status_code != 200:
+                print(f"Error {response.status_code} sending Notifiarr message, the response was:\n{response.text}")
+        except Exception as e:
+            print(f"Error in emit method: {str(e)}")
 
 class SlackHandler(logging.Handler):
     def __init__(self, webhook_url):
