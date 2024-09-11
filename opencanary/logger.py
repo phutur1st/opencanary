@@ -243,6 +243,63 @@ class HpfeedsHandler(logging.Handler):
         except:  # noqa: E722
             print("Error on publishing to server")
 
+class NotifiarrHandler(logging.Handler):
+    def __init__(self, webhook_url):
+        logging.Handler.__init__(self)
+        self.webhook_url = webhook_url
+
+    def generate_msg(self, alert):
+        data = json.loads(alert.msg)
+        
+        # Prepare the fields for the Notifiarr payload
+        fields = []
+        for k, v in data.items():
+            # Check for null, "Missing Value", -1, or empty string and skip
+            if v is None or v == "Missing Value" or v == -1 or v == "":
+                continue
+            # Wrap values in backticks for Discord markdown
+            fields.append({
+                "title": k,
+                "text": f"`{json.dumps(v) if isinstance(v, dict) else str(v)}`",
+                "inline": False
+            })
+        
+        # Create the Notifiarr payload
+        msg = {
+            "notification": {
+                "update": False,
+                "name": "OpenCanary Alert",
+                "event": "stormtrooper"
+            },
+            "discord": {
+                "color": "FF0000",  # Optional: Customize as needed
+                "ping": {
+                    "pingUser": **redacted**  # Optional: Add user ID if needed
+                },
+                "images": {
+                    "thumbnail": "",  # Optional: Add thumbnail URL if needed
+                    "image": ""  # Optional: Add image URL if needed
+                },
+                "text": {
+                    "title": "OpenCanary Alert",  # Title of the notification
+                    "content": "Honeypot Alert",  # Content to display above the embed
+                    "fields": fields  # Fields created from the alert data
+                },
+                "ids": {
+                    "channel": **redacted**  # Required: Channel ID to send the notification
+                }
+            }
+        }
+        
+        return msg
+
+    def emit(self, record):
+        data = self.generate_msg(record)
+        response = requests.post(self.webhook_url, json=data)
+        if response.status_code != 200:
+            print(
+                f"Error {response.status_code} sending Notifiarr message, the response was:\n{response.text}"
+            )
 
 class SlackHandler(logging.Handler):
     def __init__(self, webhook_url):
