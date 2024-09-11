@@ -244,49 +244,128 @@ class HpfeedsHandler(logging.Handler):
             print("Error on publishing to server")
 
 class NotifiarrHandler(logging.Handler):
-    def __init__(self, webhook_url):
+    LOG_TYPE_MAP = {
+        1000: "Boot",
+        1001: "Message",
+        1002: "Debug",
+        1003: "Error",
+        1004: "Ping",
+        1005: "Config Save",
+        1006: "Example",
+        2000: "FTP Login Attempt",
+        3000: "HTTP GET",
+        3001: "HTTP POST Login Attempt",
+        4000: "SSH New Connection",
+        4001: "SSH Remote Version Sent",
+        4002: "SSH Login Attempt",
+        5000: "SMB File Open",
+        5001: "Port SYN",
+        5002: "Port NMAP OS",
+        5003: "Port NMAP NULL",
+        5004: "Port NMAP XMAS",
+        5005: "Port NMAP FIN",
+        6001: "Telnet Login Attempt",
+        7001: "HTTP Proxy Login Attempt",
+        8001: "MySQL Login Attempt",
+        9001: "MSSQL Login SQL Auth",
+        9002: "MSSQL Login Windows Auth",
+        10001: "TFTP",
+        11001: "NTP Monlist",
+        12001: "VNC",
+        13001: "SNMP Command",
+        14001: "RDP",
+        15001: "SIP Request",
+        16001: "Git Clone Request",
+        17001: "Redis Command",
+        18001: "TCP Banner Connection Made",
+        18002: "TCP Banner Keep Alive Connection Made",
+        18003: "TCP Banner Keep Alive Secret Received",
+        18004: "TCP Banner Keep Alive Data Received",
+        18005: "TCP Banner Data Received",
+        19001: "LLMNR Query Response",
+        99000: "User 0",
+        99001: "User 1",
+        99002: "User 2",
+        99003: "User 3",
+        99004: "User 4",
+        99005: "User 5",
+        99006: "User 6",
+        99007: "User 7",
+        99008: "User 8",
+        99009: "User 9"
+    }
+
+    def __init__(self, webhook_url, time_options):
         logging.Handler.__init__(self)
         self.webhook_url = webhook_url
+        self.time_options = time_options  # Set the time options array (local_time, local_time_adjusted, utc_time)
 
     def generate_msg(self, alert):
         data = json.loads(alert.msg)
-        
+
         # Prepare the fields for the Notifiarr payload
         fields = []
         for k, v in data.items():
-            # Check for null, "Missing Value", -1, or empty string and skip
+            # Skip null, "Missing Value", -1, or empty string fields
             if v is None or v == "Missing Value" or v == -1 or v == "":
                 continue
-            # Wrap values in backticks for Discord markdown
+
+            # Skip the original logtype field as it will be replaced
+            if k == "logtype" or k == "log_type":
+                continue
+
+            # Add only the selected time fields
+            if k in ["local_time", "local_time_adjusted", "utc_time"] and k not in self.time_options:
+                continue  # Skip this time field if it's not in the selected options
+
+            # Determine markdown wrapping
+            if k == "logdata":
+                # Use triple backticks for logdata field
+                text = f"```\n{json.dumps(v) if isinstance(v, dict) else str(v)}\n```"
+            else:
+                # Use single backticks for other fields
+                text = f"`{json.dumps(v) if isinstance(v, dict) else str(v)}`"
+
             fields.append({
                 "title": k,
-                "text": f"`{json.dumps(v) if isinstance(v, dict) else str(v)}`",
+                "text": text,
                 "inline": False
             })
-        
+
+        # Include log type as the "logtype" field with human-readable name
+        log_type_number = data.get("logtype", data.get("log_type", None))
+        log_type_name = self.LOG_TYPE_MAP.get(log_type_number, "Unknown")
+
+        if log_type_number is not None:
+            fields.append({
+                "title": "logtype",  # Keep the original label as "logtype"
+                "text": f"`{log_type_number}: {log_type_name}`",  # Show number and readable name
+                "inline": False
+            })
+
         # Create the Notifiarr payload
         msg = {
             "notification": {
                 "update": False,
-                "name": "OpenCanary Alert",
-                "event": " **redacted** "
+                "name": "OpenCanary",
+                "event": f"{log_type_number}: {log_type_name}"  # Event field no longer wrapped in backticks
             },
             "discord": {
                 "color": "FF0000",  # Optional: Customize as needed
                 "ping": {
-                    "pingUser": **redacted**  # Optional: Add user ID if needed
+                    "pingUser": '''548747222184099842'''  # Optional: Add user ID if needed
                 },
                 "images": {
                     "thumbnail": "",  # Optional: Add thumbnail URL if needed
                     "image": ""  # Optional: Add image URL if needed
                 },
                 "text": {
-                    "title": "OpenCanary Alert",  # Title of the notification
+                    "title": "Incident Detail",  # Title of the notification
                     "content": "Honeypot Alert",  # Content to display above the embed
                     "fields": fields  # Fields created from the alert data
                 },
                 "ids": {
-                    "channel": **redacted**  # Required: Channel ID to send the notification
+                    "channel": '''redacted'''  # Required: Channel ID to send the notification
                 }
             }
         }
