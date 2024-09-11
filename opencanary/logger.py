@@ -353,7 +353,7 @@ class NotifiarrHandler(logging.Handler):
             "discord": {
                 "color": "FF0000",  # Optional: Customize as needed
                 "ping": {
-                    "pingUser": '''548747222184099842'''  # Optional: Add user ID if needed
+                    "pingUser": '''redacted'''  # Optional: Add user ID if needed
                 },
                 "images": {
                     "thumbnail": "",  # Optional: Add thumbnail URL if needed
