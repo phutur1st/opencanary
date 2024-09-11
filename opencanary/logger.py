@@ -269,7 +269,7 @@ class NotifiarrHandler(logging.Handler):
             "notification": {
                 "update": False,
                 "name": "OpenCanary Alert",
-                "event": "stormtrooper"
+                "event": " **redacted** "
             },
             "discord": {
                 "color": "FF0000",  # Optional: Customize as needed
