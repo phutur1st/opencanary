@@ -3,6 +3,7 @@ import simplejson as json
 import logging.config
 import socket
 import hpfeeds
+import inspect
 import sys
 
 from datetime import datetime
@@ -244,13 +245,13 @@ class HpfeedsHandler(logging.Handler):
             print("Error on publishing to server")
 
 class NotifiarrHandler(logging.Handler):
-
-    def __init__(self, webhook_url, discord_user_id=None, discord_color=None, discord_chan_id=None, time_options=None):
+    def __init__(self, webhook_url, discord_user_id=None, discord_color=None, discord_chan_id=None, time_options=None, drop_empty=None):
         super().__init__()
         self.webhook_url = webhook_url
         self.discord_user_id = discord_user_id
         self.discord_color = discord_color
         self.discord_chan_id = discord_chan_id
+        self.drop_empty = drop_empty
         self.LOG_TYPE_MAP = self.generate_log_type_map()
         self.time_options = time_options if time_options else []  # Allow optional time field selection
         
@@ -265,11 +266,13 @@ class NotifiarrHandler(logging.Handler):
     def generate_msg(self, alert):
         data = json.loads(alert.msg)
 
-        # Drop unused fields
+        # Drop unused fields based on `drop_empty` boolean
         fields = []
         for k, v in data.items():
-            if v is None or v == "Missing Value" or v == -1 or v == "":
-                continue
+            if self.drop_empty:
+                if v is None or v == "Missing Value" or v == -1 or v == "":
+                    continue
+            # Skip logtype and log_type fields
             if k == "logtype" or k == "log_type":
                 continue
 
