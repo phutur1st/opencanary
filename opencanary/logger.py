@@ -245,13 +245,15 @@ class HpfeedsHandler(logging.Handler):
 
 class NotifiarrHandler(logging.Handler):
 
-    def __init__(self, webhook_url, time_options=None):
+    def __init__(self, webhook_url, discord_user_id=None, discord_color=None, discord_chan_id=None, time_options=None):
         super().__init__()
         self.webhook_url = webhook_url
+        self.discord_user_id = discord_user_id
+        self.discord_color = discord_color
+        self.discord_chan_id = discord_chan_id
         self.LOG_TYPE_MAP = self.generate_log_type_map()
         self.time_options = time_options if time_options else []  # Allow optional time field selection
-        print(f"notifiarrHander LOG_TYPE_MAP: {self.LOG_TYPE_MAP}")  # Temp mapping debug output
-
+        
     def generate_log_type_map(self):
         log_type_map = {}
         for name, value in inspect.getmembers(LoggerBase, lambda x: isinstance(x, int)):
@@ -271,7 +273,7 @@ class NotifiarrHandler(logging.Handler):
             if k == "logtype" or k == "log_type":
                 continue
 
-            # Add selected time zones as per opencanary.conf
+            # Add selected time options as per opencanary.conf
             if k in ["local_time", "local_time_adjusted", "utc_time"] and k not in self.time_options:
                 continue
 
@@ -301,15 +303,15 @@ class NotifiarrHandler(logging.Handler):
                 "event": f"{log_type_number}: {log_type_name}"
             },
             "discord": {
-                "color": "FF0000",
-                "ping": {"pingUser": '''redacted'''},
+                "color": self.discord_color,
+                "ping": {"pingUser": self.discord_user_id},
                 "images": {"thumbnail": "", "image": ""},
                 "text": {
                     "title": "Incident Detail",
                     "content": "Honeypot Alert",
                     "fields": fields  # Fields parsed and treated from the alert data
                 },
-                "ids": {"channel": '''redacted'''}
+                "ids": {"channel": self.discord_chan_id}
             }
         }
         
